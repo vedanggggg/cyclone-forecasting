@@ -9,8 +9,12 @@ warnings.filterwarnings("ignore")
 
 from utils import *
 
-BASE_DATA = "/rds/general/ephemeral/user/zr523/ephemeral/satellite/"
-BASE_DIR = f"{BASE_DATA}metadata"
+# Get script directory for relative file references
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Use environment variable if set (for Kaggle), otherwise use default
+BASE_DATA = os.environ.get("BASE_DATA", "/rds/general/ephemeral/user/zr523/ephemeral/satellite/")
+BASE_DIR = os.environ.get("METADATA_DIR", f"{BASE_DATA}metadata")
 
 def get_satmaps(region, name):
     satmaps = {
@@ -129,7 +133,8 @@ def get_satmaps(region, name):
 
     return satmaps, f"{region}_{name}"
 
-cyclones_path = "./list_of_cyclones.xlsx"
+# Use absolute path for cyclones file
+cyclones_path = os.path.join(SCRIPT_DIR, "list_of_cyclones.xlsx")
 df = pd.read_excel(cyclones_path)
 df = df.drop('Unnamed: 8', axis=1)
 df = df.dropna()

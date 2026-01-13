@@ -20,10 +20,12 @@ import cdsapi
 warnings.filterwarnings("ignore")
 
 import sys
-sys.stdout = open(f'ERA5_LOG_{datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}.log','wt')
-print = partial(print, flush=True)
 
-BASE_DIR = "/rds/general/user/zr523/home/researchProject/satellite/era5"
+# Get script directory for relative file references
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Use environment variable if set (for Kaggle), otherwise use default
+BASE_DIR = os.environ.get("ERA5_DIR", "/rds/general/user/zr523/home/researchProject/satellite/era5")
 
 ERA5_VARIABLES = [
             '100m_u_component_of_wind', '100m_v_component_of_wind', '10m_u_component_of_neutral_wind',
@@ -39,7 +41,8 @@ ERA5_VARIABLES = [
             'vertical_integral_of_northward_cloud_frozen_water_flux', 'vertical_integral_of_northward_cloud_liquid_water_flux',
         ] 
 
-cyclones_path = "./list_of_cyclones.xlsx"
+# Use absolute path for cyclones file
+cyclones_path = os.path.join(SCRIPT_DIR, "list_of_cyclones.xlsx")
 df = pd.read_excel(cyclones_path)
 df = df.drop('Unnamed: 8', axis=1)
 df = df.dropna()

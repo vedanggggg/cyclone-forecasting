@@ -13,15 +13,16 @@ from send_emails import send_txt_email
 
 import os
 
+# Get script directory for relative file references
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 O_SIZE = int(os.getenv("O_SIZE", 64))
 
-BASE_DIR = f"/rds/general/ephemeral/user/zr523/ephemeral/satellite/dataloader/{O_SIZE}_FC/"
-#f"/vol/bitbucket/zr523/researchProject/satellite
+# Use environment variable if set (for Kaggle), otherwise use default
+BASE_DIR = os.environ.get("DATALOADER_DIR", f"/rds/general/ephemeral/user/zr523/ephemeral/satellite/dataloader/{O_SIZE}_FC/")
 
-import sys
-sys.stdout = open(f'DL_FC_LOG_{datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}.log','wt')
-
-cyclones_path = "./list_of_cyclones.xlsx"
+# Use absolute path for cyclones file
+cyclones_path = os.path.join(SCRIPT_DIR, "list_of_cyclones.xlsx")
 df = pd.read_excel(cyclones_path)
 df = df.drop('Unnamed: 8', axis=1)
 df = df.dropna()

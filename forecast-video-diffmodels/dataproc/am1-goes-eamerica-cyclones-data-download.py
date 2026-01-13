@@ -19,11 +19,14 @@ import sys
 
 warnings.filterwarnings("ignore")
 
-sys.stdout = open(f'AME_LOG_{datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}.log','wt')
+# Get script directory for relative file references
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-BASE_DIR = "/rds/general/user/zr523/home/researchProject/satellite/goes_east"
+# Use environment variable if set (for Kaggle), otherwise use default
+BASE_DIR = os.environ.get("GOES_EAST_DIR", "/rds/general/user/zr523/home/researchProject/satellite/goes_east")
 
-cyclones_path = "./list_of_cyclones.xlsx"
+# Use absolute path for cyclones file
+cyclones_path = os.path.join(SCRIPT_DIR, "list_of_cyclones.xlsx")
 df = pd.read_excel(cyclones_path)
 df = df.drop('Unnamed: 8', axis=1)
 goes_east_df = df[df["Name"] == "Bonnie"]
