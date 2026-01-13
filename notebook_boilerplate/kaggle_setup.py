@@ -188,7 +188,7 @@ Next Steps:
 
 2. Or download manually:
    
-   !python /kaggle/working/forecast-video-diffmodels/dataproc/am1-goes-eamerica-cyclones-data-download.py
+   !python /kaggle/working/tc-weather-forecasting/forecast-video-diffmodels/dataproc/am1-goes-eamerica-cyclones-data-download.py
 
 Directory Structure:
 --------------------
