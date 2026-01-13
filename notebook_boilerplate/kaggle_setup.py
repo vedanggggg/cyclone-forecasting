@@ -26,10 +26,11 @@ from pathlib import Path
 # CONFIGURATION
 # =============================================================================
 
-REPO_URL = "https://github.com/Ren-creater/forecast-video-diffmodels.git"
+REPO_URL = "https://github.com/Vedang-P/tc-weather-forecasting.git"
 WORK_DIR = Path("/kaggle/working")
 DATA_DIR = WORK_DIR / "data"
-REPO_DIR = WORK_DIR / "forecast-video-diffmodels"
+REPO_DIR = WORK_DIR / "tc-weather-forecasting"  # Cloned repo root
+CODE_DIR = REPO_DIR / "forecast-video-diffmodels"  # Actual code folder
 OUTPUT_DIR = WORK_DIR / "outputs"
 
 # Create directory structure
@@ -121,18 +122,29 @@ def install_dependencies():
     print("✅ Dependencies installed!")
 
 def clone_repository():
-    """Clone the forecast-video-diffmodels repository."""
+    """Clone the tc-weather-forecasting private repository."""
     print_status("📥", "Cloning repository")
     
     if REPO_DIR.exists():
         print(f"  Repository already exists at {REPO_DIR}")
     else:
-        run_cmd(f"git clone {REPO_URL} {REPO_DIR}")
-        print(f"✅ Repository cloned to {REPO_DIR}")
+        # Get GitHub token from Kaggle Secrets for private repo
+        try:
+            from kaggle_secrets import UserSecretsClient
+            secrets = UserSecretsClient()
+            github_token = secrets.get_secret("GITHUB_TOKEN")
+            auth_url = REPO_URL.replace("https://", f"https://{github_token}@")
+            run_cmd(f"git clone {auth_url} {REPO_DIR}")
+            print(f"✅ Private repository cloned to {REPO_DIR}")
+        except Exception as e:
+            print(f"⚠️  Could not get GitHub token: {e}")
+            print("   Add your GitHub Personal Access Token as Kaggle Secret 'GITHUB_TOKEN'")
+            print("   Generate at: https://github.com/settings/tokens")
+            return False
     
-    # Add repo to Python path
-    sys.path.insert(0, str(REPO_DIR / "imagen"))
-    sys.path.insert(0, str(REPO_DIR / "dataproc"))
+    # Add repo to Python path (actual code is in forecast-video-diffmodels subfolder)
+    sys.path.insert(0, str(CODE_DIR / "imagen"))
+    sys.path.insert(0, str(CODE_DIR / "dataproc"))
 
 def create_directories():
     """Create the required directory structure."""
@@ -149,7 +161,7 @@ def patch_hardcoded_paths():
     print_status("🔧", "Patching hardcoded paths")
     
     # Set environment variables that scripts can use
-    os.environ["BASE_HOME"] = str(REPO_DIR)
+    os.environ["BASE_HOME"] = str(CODE_DIR)
     os.environ["BASE_DATA"] = str(DATA_DIR)
     os.environ["GOES_EAST_DIR"] = str(DATA_DIR / "goes_east")
     os.environ["GOES_WEST_DIR"] = str(DATA_DIR / "goes_west")
@@ -190,7 +202,8 @@ Directory Structure:
 │   ├── checkpoints/          <- Model checkpoints
 │   ├── predictions/          <- Generated predictions
 │   └── logs/                 <- Training logs
-└── forecast-video-diffmodels/ <- Cloned repository
+└── tc-weather-forecasting/       <- Cloned repository
+    └── forecast-video-diffmodels/ <- Actual code
 """)
 
 # =============================================================================
@@ -213,6 +226,7 @@ def run_setup():
     
     return {
         "repo_dir": REPO_DIR,
+        "code_dir": CODE_DIR,
         "data_dir": DATA_DIR,
         "output_dir": OUTPUT_DIR,
     }

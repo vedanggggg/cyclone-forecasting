@@ -28,7 +28,8 @@ from tqdm import tqdm
 # Kaggle paths
 WORK_DIR = Path("/kaggle/working")
 DATA_DIR = WORK_DIR / "data"
-REPO_DIR = WORK_DIR / "forecast-video-diffmodels"
+REPO_DIR = WORK_DIR / "tc-weather-forecasting"
+CODE_DIR = REPO_DIR / "forecast-video-diffmodels"  # Actual code folder
 
 # Satellite data directories
 GOES_EAST_DIR = DATA_DIR / "goes_east"
@@ -36,7 +37,7 @@ GOES_WEST_DIR = DATA_DIR / "goes_west"
 ERA5_DIR = DATA_DIR / "era5"
 
 # Cyclone list
-CYCLONES_PATH = REPO_DIR / "dataproc" / "list_of_cyclones.xlsx"
+CYCLONES_PATH = CODE_DIR / "dataproc" / "list_of_cyclones.xlsx"
 
 # Region to satellite mapping
 REGION_SATELLITE_MAP = {

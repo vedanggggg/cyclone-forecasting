@@ -20,10 +20,9 @@ download_cyclones(["Ian", "Fiona"])
 
 1. **GPU Runtime**: Settings → Accelerator → GPU P100
 2. **Internet Access**: Settings → Internet → On
-3. **CDS API Key** (for ERA5 data):
-   - Create account at https://cds.climate.copernicus.eu/
-   - Get API key from your profile page
-   - Add as Kaggle Secret: `CDS_API_KEY`
+3. **Kaggle Secrets** (Add → Secrets):
+   - `GITHUB_TOKEN` - GitHub Personal Access Token (for private repo)
+   - `CDS_API_KEY` - Copernicus CDS API key (for ERA5 data)
 
 ## Available Cyclones
 
