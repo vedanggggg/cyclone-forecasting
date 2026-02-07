@@ -2,6 +2,7 @@ import glob
 import copy
 import argparse
 from functools import partial, partialmethod
+import os
 
 from einops import rearrange
 
@@ -12,8 +13,16 @@ sys.path.append("../../dataproc/")
 
 from utils import sample
 from helpers import *
-from imagen_pytorch import Unet3D, Imagen, ImagenTrainer, NullUnet
+try:
+    from imagen_api_compat import Unet3D, Imagen, ImagenTrainer, NullUnet
+except ImportError:
+    from imagen_pytorch import Unet3D, Imagen, ImagenTrainer, NullUnet
 from send_emails import *
+
+try:
+    import wandb
+except Exception:
+    wandb = None
 
 seed_value = 42
 torch.manual_seed(seed_value)
@@ -21,11 +30,21 @@ if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed_value)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-run_name', help='Specify the run name (for eg. 64_FC_3e-4)')
+parser.add_argument('--log_to_file', action='store_true', help='redirect stdout to metrics log file')
+parser.add_argument('--progress_interval', type=int, default=1, help='print interval (checkpoints)')
+parser.add_argument('--disable_tqdm', action='store_true', help='disable tqdm progress bars')
+parser.add_argument('--enable_wandb', action='store_true', help='enable Weights & Biases logging')
+parser.add_argument('--wandb_project', default='cyclone-forecasting', help='wandb project')
+parser.add_argument('--wandb_entity', default=None, help='wandb entity/team')
+parser.add_argument('--wandb_run_name', default=None, help='wandb run name')
+parser.add_argument('--wandb_mode', default='online', choices=['online', 'offline', 'disabled'], help='wandb mode')
 args = parser.parse_args()
 
-sys.stdout = open(f'METRICS_LOG_{datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}.log','wt')
+if args.log_to_file:
+    sys.stdout = open(f'METRICS_LOG_{datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}.log','wt')
 print = partial(print, flush=True)
-tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+tqdm_disabled = args.disable_tqdm or os.environ.get("FDM_DISABLE_TQDM", "0") == "1"
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=tqdm_disabled)
 
 RUN_NAME = args.run_name
 BASE_DIR = f"{BASE_HOME}/models/{RUN_NAME}/models/{RUN_NAME}/"
@@ -81,6 +100,20 @@ train_test_metric_dict = {
     "test": copy.deepcopy(metric_dict)
 }
 
+wandb_run = None
+if args.enable_wandb:
+    if wandb is None:
+        print("[wandb] not installed, continuing without wandb")
+    else:
+        wandb_run = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            name=args.wandb_run_name or f"{RUN_NAME}-eval",
+            mode=args.wandb_mode,
+            config={"run_name": RUN_NAME, "script": "v_t02-sampling-and-evaluation.py"}
+        )
+        print(f"[wandb] initialized run: {wandb_run.name}")
+
 for idx in range(len(ckpt_trainer_files)):
     ckpt_trainer_path = ckpt_trainer_files[idx]
     print(f'Evaluating {ckpt_trainer_path.split("/")[-1]} ...')
@@ -94,11 +127,21 @@ for idx in range(len(ckpt_trainer_files)):
         metric_dict = calculate_metrics(y_pred, y_true)
         for key in metric_dict.keys():
             train_test_metric_dict[mode][key].append(metric_dict[key])
+        if wandb_run is not None:
+            step = idx
+            for key, value in metric_dict.items():
+                val = float(value.detach().item() if torch.is_tensor(value) else value)
+                wandb.log({f"eval/{mode}/{key}": val}, step=step)
+
+    if (idx % max(1, args.progress_interval) == 0) or (idx == len(ckpt_trainer_files) - 1):
+        print(f"[eval] completed checkpoint {idx+1}/{len(ckpt_trainer_files)}")
 
 with open(f"{BASE_HOME}/models/{RUN_NAME}/metrics.pkl", "wb") as file:
     pickle.dump(train_test_metric_dict, file)
 
 print(f'Evaluation completed.')
+if wandb_run is not None:
+    wandb.finish()
 
 subject = f"[COMPLETED] Evaluation Metrics"
 message_txt = f"""Metrics Evaluation Completed for {RUN_NAME}"""

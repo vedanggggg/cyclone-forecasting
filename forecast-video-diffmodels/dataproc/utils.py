@@ -14,9 +14,19 @@ from pyproj import Proj
 import os
 import sys
 
-BASE_HOME = "/rds/general/user/zr523/home/researchProject"
-#"/vol/bitbucket/zr523/researchProject"
-sys.path.append(f"{BASE_HOME}/forecast-diffmodels/imagen/")
+_DATAPROC_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.abspath(os.environ.get("FDM_PROJECT_ROOT", os.path.join(_DATAPROC_DIR, "..")))
+BASE_HOME = os.path.abspath(os.environ.get("FDM_BASE_HOME", _PROJECT_ROOT))
+
+_imagen_candidates = [
+    os.environ.get("FDM_IMAGEN_DIR"),
+    os.path.join(_PROJECT_ROOT, "imagen"),
+]
+for _imagen_dir in _imagen_candidates:
+    if _imagen_dir and os.path.isdir(_imagen_dir):
+        if _imagen_dir not in sys.path:
+            sys.path.append(_imagen_dir)
+        break
 from imagen_pytorch import Unet, Unet3D, Imagen, ImagenTrainer, NullUnet
 from einops import rearrange, repeat
 
@@ -347,8 +357,11 @@ class Cyclone:
         name = name.replace(' ', '').lower()
         return f"{self.abbv_region}_{name}"
 
-    def __init__(self, region, name, dir="/vol/bitbucket/zr523/researchProject/satellite/metadata"):
-        self.BASE_DIR = dir#"/rds/general/ephemeral/user/zr523/ephemeral/satellite/metadata"#dir
+    def __init__(self, region, name, dir=None):
+        if dir is None:
+            base_data = os.environ.get("BASE_DATA", os.path.join(BASE_HOME, "satellite"))
+            dir = os.environ.get("METADATA_DIR", os.path.join(base_data, "metadata"))
+        self.BASE_DIR = dir
         self.filename = self._get_filename(region, name)
         with open(f"{self.BASE_DIR}/{self.filename}.metadata", 'rb') as metadata_file:
             self.metadata = pickle.load(metadata_file)

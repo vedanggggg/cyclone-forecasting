@@ -2,6 +2,7 @@ import pandas as pd
 import torch
 import skimage
 import pickle
+import os
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -11,7 +12,7 @@ from tqdm import tqdm
 from utils import *
 from send_emails import send_txt_email
 
-BASE_DIR = "/rds/general/user/zr523/home/researchProject/satellite/dataloader/64_PRP/"
+BASE_DIR = os.environ.get("DATALOADER_DIR", "/rds/general/user/zr523/home/researchProject/satellite/dataloader/64_PRP/")
 
 import sys
 sys.stdout = open(f'DL_PRP_LOG_{datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}.log','wt')

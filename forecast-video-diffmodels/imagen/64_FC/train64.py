@@ -14,6 +14,7 @@ import torch.nn as nn
 from tqdm.auto import tqdm
 from torch import optim
 import logging
+import time
 from torch.utils.tensorboard import SummaryWriter
 
 from einops import rearrange
@@ -26,7 +27,15 @@ sys.path.append("../")
 sys.path.append("../imagen/")
 
 from helpers import *
-from imagen_pytorch import Unet3D, Imagen, ImagenTrainer
+try:
+    from imagen_api_compat import Unet3D, Imagen, ImagenTrainer
+except ImportError:
+    from imagen_pytorch import Unet3D, Imagen, ImagenTrainer
+
+try:
+    import wandb
+except Exception:
+    wandb = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-run_name', help='Specify the run name (for eg. 64_FC_3e-4)')
@@ -34,6 +43,13 @@ parser.add_argument('-mode', help='Specify the mode [execute, experiment]')
 parser.add_argument('-epochs', help='Specify the number of epochs')
 parser.add_argument('--no_ema', action='store_false', dest='use_ema', help='disable ema for training')
 parser.add_argument('--no_two_stage', action='store_false', dest='img', help='disable training with single frames')
+parser.add_argument('--progress_interval', type=int, default=25, help='print interval (steps)')
+parser.add_argument('--disable_tqdm', action='store_true', help='disable tqdm progress bar')
+parser.add_argument('--enable_wandb', action='store_true', help='enable Weights & Biases logging')
+parser.add_argument('--wandb_project', default='cyclone-forecasting', help='wandb project')
+parser.add_argument('--wandb_entity', default=None, help='wandb entity/team')
+parser.add_argument('--wandb_run_name', default=None, help='wandb run name')
+parser.add_argument('--wandb_mode', default='online', choices=['online', 'offline', 'disabled'], help='wandb mode')
 cmd_args = parser.parse_args()
 
 RUN_NAME = cmd_args.run_name
@@ -53,8 +69,10 @@ mode = cmd_args.mode
 
 MODE = mode.upper()
 
-from functools import partialmethod
-tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+from functools import partial, partialmethod
+tqdm_disabled = cmd_args.disable_tqdm or os.environ.get("FDM_DISABLE_TQDM", "0") == "1"
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=tqdm_disabled)
+print = partial(print, flush=True)
 
 unets, O_SIZE = run_name_info(RUN_NAME)
 
@@ -76,6 +94,29 @@ def train(args):
     
     k = 1
     trainer = ImagenTrainer(imagen, use_ema = args.use_ema, lr=args.lr, verbose=False).cuda()
+
+    wandb_run = None
+    if cmd_args.enable_wandb:
+        if wandb is None:
+            logging.warning("W&B requested but not installed. Continuing without wandb.")
+            print("[wandb] not installed, continuing without wandb")
+        else:
+            wandb_run = wandb.init(
+                project=cmd_args.wandb_project,
+                entity=cmd_args.wandb_entity,
+                name=cmd_args.wandb_run_name or args.run_name,
+                mode=cmd_args.wandb_mode,
+                config={
+                    "run_name": args.run_name,
+                    "epochs": args.epochs,
+                    "batch_size": args.batch_size,
+                    "lr": args.lr,
+                    "image_size": args.image_size,
+                    "use_ema": args.use_ema,
+                    "two_stage_enabled": cmd_args.img,
+                }
+            )
+            print(f"[wandb] initialized run: {wandb_run.name}")
     try:
         ckpt_path = os.path.join(f"{BASE_DIR}/models", args.run_name, f"ckpt_{k}.pt")
         ckpt_trainer_path = os.path.join(f"{BASE_DIR}/models", args.run_name, f"ckpt_trainer_{k}.pt")
@@ -94,6 +135,7 @@ def train(args):
         epoch = 0
     
     for epoch in range(start_epoch+1, args.epochs):
+        epoch_start = time.time()
         logging.info(f"Starting epoch {epoch}:")
         if not cmd_args.img or epoch > args.epochs // 8:
             logging.info("Starting training on 10 frames videos")
@@ -101,14 +143,17 @@ def train(args):
             test_dataloader.switch_to_vid()
             train_dataloader.create_batches(args.batch_size, False)
             test_dataloader.create_batches(args.batch_size, False)
+            print(f"[epoch {epoch+1}] mode=video")
+            if wandb_run is not None:
+                wandb.log({"train/mode_video": 1}, step=epoch * max(1, len(train_dataloader)))
 
         if args.shuffle_every_epoch:
             _ = len(train_dataloader) ; train_dataloader.create_batches(args.batch_size, False)
-        print(len(train_dataloader))
-        print(len(test_dataloader))
+        print(f"[epoch {epoch+1}/{args.epochs}] train_batches={len(train_dataloader)} test_batches={len(test_dataloader)}")
         pbar = tqdm(train_dataloader)
 
-        for i, (vid_cond, vid_64, era5) in enumerate(pbar):            
+        last_loss = None
+        for i, (vid_cond, vid_64, era5) in enumerate(pbar):
             cond_embeds = era5.reshape(era5.shape[0], -1).float().cuda()                        
             loss = trainer(vid_64,
                            cond_video_frames=vid_cond,
@@ -116,9 +161,21 @@ def train(args):
                            unet_number=k,
                            ignore_time=False)
             trainer.update(unet_number=k)
+            loss_val = float(loss.detach().item() if torch.is_tensor(loss) else loss)
+            last_loss = loss_val
     
-            pbar.set_postfix({f"MSE_{k}":loss})
-            logger.add_scalar(f"MSE_{k}",loss, global_step=epoch*len(train_dataloader)+i)
+            pbar.set_postfix({f"MSE_{k}": loss_val})
+            global_step = epoch*len(train_dataloader)+i
+            logger.add_scalar(f"MSE_{k}", loss_val, global_step=global_step)
+            if wandb_run is not None:
+                wandb.log({"train/mse": loss_val, "train/epoch": epoch}, step=global_step)
+
+            if (i % max(1, cmd_args.progress_interval) == 0) or (i == len(train_dataloader) - 1):
+                elapsed = time.time() - epoch_start
+                print(
+                    f"[epoch {epoch+1}/{args.epochs}] step {i+1}/{len(train_dataloader)} "
+                    f"mse={loss_val:.6f} elapsed={elapsed:.1f}s"
+                )
 
         checkpoint = {
             'epoch': epoch,
@@ -151,8 +208,21 @@ def train(args):
             #ema_sampled_vid = ema_sampled_vid.squeeze(0)
             ema_sampled_images = rearrange(ema_sampled_vid, 'b c t h w -> (b t) c h w')
             vid = rearrange(vid, 'b c t h w -> (b t) c h w')
-            save_images_v2(test_dataloader, vid, ema_sampled_images, os.path.join(f"{BASE_DIR}/results", args.run_name, f"{epoch}_ema.jpg"))
+            sample_path = os.path.join(f"{BASE_DIR}/results", args.run_name, f"{epoch}_ema.jpg")
+            save_images_v2(test_dataloader, vid, ema_sampled_images, sample_path)
+            if wandb_run is not None:
+                try:
+                    wandb.log({"samples/ema": wandb.Image(sample_path), "train/epoch": epoch}, step=(epoch+1)*len(train_dataloader))
+                except Exception:
+                    pass
             logging.info(f"Completed sampling for epoch {epoch}.")
+        epoch_secs = time.time() - epoch_start
+        if wandb_run is not None and last_loss is not None:
+            wandb.log({"train/epoch_time_sec": epoch_secs, "train/epoch_last_mse": last_loss}, step=(epoch+1)*len(train_dataloader))
+        print(f"[epoch {epoch+1}/{args.epochs}] completed in {epoch_secs:.1f}s")
+
+    if wandb_run is not None:
+        wandb.finish()
                 
 import argparse
 

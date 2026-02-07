@@ -19,9 +19,19 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-BASE_HOME = "/rds/general/user/zr523/home/researchProject"#"/vol/bitbucket/zr523/researchProject"
-BASE_DATA = "/rds/general/ephemeral/user/zr523/ephemeral"#BASE_HOME
-sys.path.append(f"{BASE_HOME}/forecast-diffmodels/dataproc")
+_HELPERS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.abspath(os.environ.get("FDM_PROJECT_ROOT", os.path.join(_HELPERS_DIR, "..")))
+BASE_HOME = os.path.abspath(os.environ.get("FDM_BASE_HOME", _PROJECT_ROOT))
+BASE_DATA = os.path.abspath(os.environ.get("FDM_BASE_DATA", BASE_HOME))
+
+DATAPROC_DIR = os.path.abspath(
+    os.environ.get(
+        "FDM_DATAPROC_DIR",
+        os.path.join(_PROJECT_ROOT, "dataproc")
+    )
+)
+if DATAPROC_DIR not in sys.path:
+    sys.path.append(DATAPROC_DIR)
 from utils import *
 
 def plot_images(images):
@@ -99,7 +109,10 @@ def get_satellite_data(args, modality = "img"):
     else:
         c_dataloader_fns = glob.glob(args.dataset_path + f"/*.dat")
 
-    test_set = pickle.load(open(f"{BASE_HOME}/forecast-diffmodels/dataproc/test_set.pkl", "rb"))
+    test_set_path = os.path.abspath(
+        os.environ.get("FDM_TEST_SET_PATH", os.path.join(DATAPROC_DIR, "test_set.pkl"))
+    )
+    test_set = pickle.load(open(test_set_path, "rb"))
 
     if hasattr(args, "augment"): augment = args.augment
     else: augment = False
