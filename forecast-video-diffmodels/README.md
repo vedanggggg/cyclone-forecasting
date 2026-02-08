@@ -27,6 +27,27 @@ To set up the project environment, follow these steps:
    clone the repository https://github.com/JunyaoHu/common_metrics_on_video_quality,
    place its files and folders in the directory ./imagen/64_FC
 
+## Kaggle Reproduction (Single Notebook)
+
+Use `/Users/vedang/Desktop/Rugved Research/forecast-video-diffmodels/Kaggle_End2End_Stage1_Auto.ipynb` for a fresh Kaggle run.
+
+Expected attached Kaggle dataset layout:
+
+- `/kaggle/input/<dataset-slug>/dataloaders_fixed/*.dat`
+- `/kaggle/input/<dataset-slug>/split_dataloaders/train_loader.pkl`
+- `/kaggle/input/<dataset-slug>/split_dataloaders/test_loader.pkl`
+
+Notebook behavior:
+
+1. Clones the project and `imagen-pytorch`.
+2. Recreates author-expected `/rds/...` paths and symlink.
+3. Canonicalizes dat file names to `region_cyclone.dat`.
+4. Reconstructs `test_set.pkl` from provided train/test split pickles (count-matched).
+5. Applies runtime compatibility patch for public `imagen-pytorch` API drift (`condition_on_continuous` mapping).
+6. Runs Stage-1 training and evaluation with periodic monitor output and optional Weights & Biases logging.
+
+Only runtime compatibility and observability are modified; model architecture and core training logic are kept aligned with the original implementation.
+
 
 ## Data Preparation
 
